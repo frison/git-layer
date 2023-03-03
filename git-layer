@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+function usage() {
+    echo "Usage: $0 <git-url> <relative-path>"
+    echo "Example: git-layer git@github.com:frison/_git-layer.git ."
+}
+
+export SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+# Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
+export OLD_WORK_DIR=$WORK_DIR
+export WORK_DIR=`mktemp -d`
+
+function log_info() {
+    echo "[$(date)] INFO: $@"
+}
+
+function log_error() {
+    >&2 echo "[$(date)] ERROR: $@"
+}
+
+function fatal() {
+    >&2 echo "[$(date)] FATAL: $@"
+    exit 1
+}
+
+# check if tmp dir was created
+if [[ ! "$WORK_DIR" || ! -d "$WORK_DIR" ]]; then
+  fatal "Could not create temp dir"
+fi
+
+# deletes the temp directory
+function cleanup {
+  local workdir=$1
+
+  (rm -rf "$workdir") || {
+    log_error "Could not remove temp dir $workdir -- manual cleanup required"
+  }
+  log_info "Deleted temp working directory $workdir"
+}
+
+# This captures the workdir in the closure so that even if the WORK_DIR is changed
+# the cleanup function will still be able to delete the correct directory
+trap "cleanup $WORK_DIR" EXIT
+
+export GIT_URL=$1
+export RELATIVE_PATH=$2
+
+cd $WORK_DIR
+
+# Shallow clone the directory, then remove the .git directory so it's just a bunch of files
+git clone --depth 1 $GIT_URL .
+rm -rf .git
+
+# This removes everything from the directory that is in the .gitlayer.ignore file
+while IFS= read -r line || [ -n "$line" ]; do
+    # Remove comments from the line (if any)
+    line=$(echo "$line" | sed 's/#.*//')
+
+    # Trim leading and trailing whitespace
+    line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
+    # Skip empty lines
+    if [ -z "$line" ]; then
+        continue
+    fi
+
+    # Use find to locate all files that match the pattern
+    find . -name "$line" -type f -delete
+done < ".gitignore.layer"
+
+# Copy the files to the relative path
+cp -r . $OLD_WORK_DIR/$RELATIVE_PATH
