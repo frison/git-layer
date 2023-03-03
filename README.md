@@ -1,6 +1,6 @@
 # git-layer
 
-Layer a git repository on top of your directory. Like a `git sub-tree` to to your current directory, without the complexity. This can also be thought of as a fancy version of `cp -r git@github.com:frison/git-layer.git/* .` but that obviously doesn't work.
+Layer a git repository on top of your directory. Like a `git sub-tree` to your current directory, without the complexity. This can also be thought of as a fancy version of `cp -r git@github.com:frison/git-layer.git/* .` but that obviously doesn't work.
 
 
 # `git-layer <git url> <relative path>`
