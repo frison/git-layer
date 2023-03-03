@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
+#
+# Version: 0.0.1
+#
+# This script is used to pull a git repository and copy the files to a relative path
+# in the current directory. It is useful for pulling in a git repository as a layer
+# on top of an existing directory.
+#
+# The script will remove any files that are listed in the .gitignore.layer file in the
+# root of the repository you are pulling in.
+#
+# Usage: git-layer <git-url> <relative-path>
+# Example: git-layer git@github.com:frison/_git-layer.git .
+#
 set -euxo pipefail
 
 function usage() {
