@@ -9,15 +9,16 @@ Copy all of the files from the git repository at `<git url>` into the `<relative
 
 ## Layer Repository
 
-A layer repository is any git repository that you want to layer ontop of your repository. This is useful for when you want to have a repository that is shared between multiple projects without the complexities of `git submodule` or the limitations of `git subtree`.
+A layer repository is any git repository that you want to layer ontop of your directory (or repository). This is useful for when you have scripts, tools, shared configuration, or anything else that is shared between multiple projects without the complexities of `git submodule` or the limitations of `git subtree`.
 
-Because a layer repositories usage is opaque to the user, it's important to comment the files appropriately -- for example, including the version of the file in the file itself and/or advising users against manual edits.
+Because a layer repository's usage is opaque to the user, it's important to comment the files appropriately -- for example, including the version of the file in the file itself and/or advising users against manual edits.
 
 ### `.gitignore.layer` file
 
-The `.gitignore.layer` file is a special file that is used to ignore files when a layer repository is copied. This is useful for when you want to ignore files that are relevant to the layer repository (for example, a README.md file) but not relevant to the current repository.
+The `.gitignore.layer` file is a special file that is used to ignore files when a layer repository is copied. This is useful for when you want to ignore files that are relevant to the layer repository (for example, a README.md file) but not relevant to where the layer repository is copied into.
 
 ## Example
 
 ```bash
-git-layer
+git-layer git@github.com:frison/git-layer.git .
+```
