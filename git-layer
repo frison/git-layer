@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 #
 # Version: 0.0.1
 #
@@ -12,38 +12,54 @@
 # Usage: git-layer <git-url> <relative-path>
 # Example: git-layer git@github.com:frison/_git-layer.git .
 #
-set -euxo pipefail
 
-function usage() {
+usage () {
     echo "Usage: $0 <git-url> <relative-path>"
     echo "Example: git-layer git@github.com:frison/_git-layer.git ."
 }
 
-export SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
-# Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
-export WORK_DIR=`mktemp -d`
-
-function log_info() {
-    echo "[git-layer] INFO: $@"
-}
-
-function log_error() {
-    >&2 echo "[git-layer] ERROR: $@"
-}
-
-function fatal() {
+die () {
     >&2 echo "[git-layer] FATAL: $@"
     exit 1
 }
 
+export CURRENT_DIR=$( pwd )
+export GIT_URL=$1
+export RELATIVE_PATH=$2
+
+if [ -z "$GIT_URL" ]; then
+    usage
+    die "Missing git url"
+fi
+
+if [ -z "$RELATIVE_PATH" ]; then
+    usage
+    die "Missing relative path"
+fi
+
+if [ ! -d "${CURRENT_DIR}/${RELATIVE_PATH}" ]; then
+    die "Relative path (${CURRENT_DIR}/${RELATIVE_PATH} does not exist"
+fi
+
+
+# Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
+export WORK_DIR=$( mktemp -d )
+
+log_info () {
+    echo "[git-layer] INFO: $@"
+}
+
+log_error () {
+    >&2 echo "[git-layer] ERROR: $@"
+}
+
 # check if tmp dir was created
-if [[ ! "$WORK_DIR" || ! -d "$WORK_DIR" ]]; then
-  fatal "Could not create temp dir"
+if ! test -d $WORK_DIR ; then
+  die "Could not create temp dir"
 fi
 
 # deletes the temp directory
-function cleanup {
+cleanup () {
   local workdir=$1
 
   (rm -rf "$workdir") || {
@@ -56,7 +72,7 @@ function cleanup {
 # the cleanup function will still be able to delete the correct directory
 trap "cleanup $WORK_DIR" EXIT
 
-function process_gitignore_layer() {
+process_gitignore_layer () {
     # This removes everything from the directory that is in the .gitlayer.ignore file
     while IFS= read -r line || [ -n "$line" ]; do
         # Remove comments from the line (if any)
@@ -77,9 +93,6 @@ function process_gitignore_layer() {
     rm .gitignore.layer
 }
 
-export GIT_URL=$1
-export RELATIVE_PATH=$2
-
 cd $WORK_DIR
 
 # Shallow clone the directory, then remove the .git directory so it's just a bunch of files
@@ -91,4 +104,4 @@ if [ -f ".gitignore.layer" ]; then
 fi
 
 # Copy the files to the relative path
-cp -r . ${SCRIPT_DIR}/${RELATIVE_PATH}
+cp -r . ${CURRENT_DIR}/${RELATIVE_PATH}
