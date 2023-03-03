@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
 
 function usage() {
     echo "Usage: $0 <git-url> <relative-path>"
@@ -9,19 +9,18 @@ function usage() {
 export SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
-export OLD_WORK_DIR=$WORK_DIR
 export WORK_DIR=`mktemp -d`
 
 function log_info() {
-    echo "[$(date)] INFO: $@"
+    echo "[git-layer] INFO: $@"
 }
 
 function log_error() {
-    >&2 echo "[$(date)] ERROR: $@"
+    >&2 echo "[git-layer] ERROR: $@"
 }
 
 function fatal() {
-    >&2 echo "[$(date)] FATAL: $@"
+    >&2 echo "[git-layer] FATAL: $@"
     exit 1
 }
 
@@ -44,6 +43,27 @@ function cleanup {
 # the cleanup function will still be able to delete the correct directory
 trap "cleanup $WORK_DIR" EXIT
 
+function process_gitignore_layer() {
+    # This removes everything from the directory that is in the .gitlayer.ignore file
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Remove comments from the line (if any)
+        line=$(echo "$line" | sed 's/#.*//')
+
+        # Trim leading and trailing whitespace
+        line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
+        # Skip empty lines
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        # Use find to locate all files that match the pattern
+        find . -name "$line" -type f -delete
+    done < ".gitignore.layer"
+
+    rm .gitignore.layer
+}
+
 export GIT_URL=$1
 export RELATIVE_PATH=$2
 
@@ -53,22 +73,9 @@ cd $WORK_DIR
 git clone --depth 1 $GIT_URL .
 rm -rf .git
 
-# This removes everything from the directory that is in the .gitlayer.ignore file
-while IFS= read -r line || [ -n "$line" ]; do
-    # Remove comments from the line (if any)
-    line=$(echo "$line" | sed 's/#.*//')
-
-    # Trim leading and trailing whitespace
-    line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-
-    # Skip empty lines
-    if [ -z "$line" ]; then
-        continue
-    fi
-
-    # Use find to locate all files that match the pattern
-    find . -name "$line" -type f -delete
-done < ".gitignore.layer"
+if [ -f ".gitignore.layer" ]; then
+    process_gitignore_layer
+fi
 
 # Copy the files to the relative path
-cp -r . $OLD_WORK_DIR/$RELATIVE_PATH
+cp -r . ${SCRIPT_DIR}/${RELATIVE_PATH}
