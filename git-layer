@@ -23,28 +23,6 @@ die () {
     exit 1
 }
 
-export CURRENT_DIR=$( pwd )
-export GIT_URL=$1
-export RELATIVE_PATH=$2
-
-if [ -z "$GIT_URL" ]; then
-    usage
-    die "Missing git url"
-fi
-
-if [ -z "$RELATIVE_PATH" ]; then
-    usage
-    die "Missing relative path"
-fi
-
-if [ ! -d "${CURRENT_DIR}/${RELATIVE_PATH}" ]; then
-    die "Relative path (${CURRENT_DIR}/${RELATIVE_PATH} does not exist"
-fi
-
-
-# Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
-export WORK_DIR=$( mktemp -d )
-
 log_info () {
     echo "[git-layer] INFO: $@"
 }
@@ -53,10 +31,19 @@ log_error () {
     >&2 echo "[git-layer] ERROR: $@"
 }
 
-# check if tmp dir was created
-if ! test -d $WORK_DIR ; then
-  die "Could not create temp dir"
-fi
+use_temp () {
+  # Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
+  export WORK_DIR=$( mktemp -d )
+
+  # check if tmp dir was created
+  if ! test -d $WORK_DIR ; then
+    die "Could not create temp dir"
+  fi
+  
+  # This captures the workdir in the closure so that even if the WORK_DIR is changed
+  # the cleanup function will still be able to delete the correct directory
+  trap "cleanup $WORK_DIR" EXIT
+}
 
 # deletes the temp directory
 cleanup () {
@@ -68,9 +55,7 @@ cleanup () {
   log_info "Deleted temp working directory $workdir"
 }
 
-# This captures the workdir in the closure so that even if the WORK_DIR is changed
-# the cleanup function will still be able to delete the correct directory
-trap "cleanup $WORK_DIR" EXIT
+
 
 process_gitignore_layer () {
     # This removes everything from the directory that is in the .gitlayer.ignore file
@@ -93,15 +78,39 @@ process_gitignore_layer () {
     rm .gitignore.layer
 }
 
-cd $WORK_DIR
+main () {
+  export CURRENT_DIR=$( pwd )
+  export GIT_URL=$1
+  export RELATIVE_PATH=$2
 
-# Shallow clone the directory, then remove the .git directory so it's just a bunch of files
-git clone --depth 1 $GIT_URL .
-rm -rf .git
+  if [ -z "$GIT_URL" ]; then
+    usage
+    die "Missing git url"
+  fi
 
-if [ -f ".gitignore.layer" ]; then
+  if [ -z "$RELATIVE_PATH" ]; then
+    usage
+    die "Missing relative path"
+  fi
+
+  if [ ! -d "${CURRENT_DIR}/${RELATIVE_PATH}" ]; then
+    die "Relative path (${CURRENT_DIR}/${RELATIVE_PATH} does not exist"
+  fi
+
+  use_temp || exit $?
+
+  cd $WORK_DIR
+
+  # Shallow clone the directory, then remove the .git directory so it's just a bunch of files
+  git clone --depth 1 $GIT_URL .
+  rm -rf .git
+
+  if [ -f ".gitignore.layer" ]; then
     process_gitignore_layer
-fi
+  fi
 
-# Copy the files to the relative path
-cp -r . ${CURRENT_DIR}/${RELATIVE_PATH}
+  # Copy the files to the relative path
+  cp -r . ${CURRENT_DIR}/${RELATIVE_PATH}
+}
+
+main "$@"
