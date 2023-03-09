@@ -1,25 +1,33 @@
 #!/bin/sh
 #
-# Version: 0.0.1
+# Version: 0.0.2
 #
 # This script is used to pull a git repository and copy the files to a relative path
 # in the current directory. It is useful for pulling in a git repository as a layer
 # on top of an existing directory.
 #
-# The script will remove any files that are listed in the .gitignore.layer file in the
+# The script will remove any files that are listed in the .gitlayer.ignore file in the
 # root of the repository you are pulling in.
 #
 # Usage: git-layer <git-url> <relative-path>
 # Example: git-layer git@github.com:frison/_git-layer.git .
 #
 
+OPTS_SPEC="\
+git-layer <repository> <path>
+git-layer --apply
+--
+h,help        show the help
+apply         discover and update any gitlayers (.gitlayer)
+"
+
 usage () {
-    echo "Usage: $0 <git-url> <relative-path>"
-    echo "Example: git-layer git@github.com:frison/_git-layer.git ."
+  set_args="$(echo "$OPTS_SPEC" | git rev-parse --parseopt -- "-h" || echo exit $?)"
+  eval "$set_args"
 }
 
 die () {
-    >&2 echo "[git-layer] FATAL: $@"
+    >&2 echo "[git-layer] $@"
     exit 1
 }
 
@@ -55,9 +63,7 @@ cleanup () {
   log_info "Deleted temp working directory $workdir"
 }
 
-
-
-process_gitignore_layer () {
+process_gitlayer_ignore () {
     # This removes everything from the directory that is in the .gitlayer.ignore file
     while IFS= read -r line || [ -n "$line" ]; do
         # Remove comments from the line (if any)
@@ -71,46 +77,91 @@ process_gitignore_layer () {
             continue
         fi
 
-        # Use find to locate all files that match the pattern
-        find . -name "$line" -type f -delete
-    done < ".gitignore.layer"
+        if test -d "$line"; then
+          rm -rf $line
+        else
+          # Use find to locate all files that match the pattern
+          find . -name "$line" -type f -delete
+        fi
+    done < ".gitlayer.ignore"
 
-    rm .gitignore.layer
+    rm .gitlayer.ignore
 }
 
-main () {
-  export CURRENT_DIR=$( pwd )
-  export GIT_URL=$1
-  export RELATIVE_PATH=$2
+apply_recursive () {
+  for dir in $(find . -name '.gitlayer' -exec dirname {} \;)
+  do
+    # cd into directory and run git-layer script with each line of .gitlayer as arguments
+    (cd "$dir" && xargs git-layer < .gitlayer)
+  done
+}
 
-  if [ -z "$GIT_URL" ]; then
+apply_layer () {
+  current_dir=$( pwd )
+  git_url=$1
+  relative_path=$2
+
+  if [ -z "$git_url" ]; then
     usage
     die "Missing git url"
   fi
 
-  if [ -z "$RELATIVE_PATH" ]; then
+  if [ -z "$relative_path" ]; then
     usage
     die "Missing relative path"
   fi
 
-  if [ ! -d "${CURRENT_DIR}/${RELATIVE_PATH}" ]; then
-    die "Relative path (${CURRENT_DIR}/${RELATIVE_PATH} does not exist"
+  if [ ! -d "${current_dir}/${relative_path}" ]; then
+    die "Relative path (${current_dir}/${relative_path} does not exist"
   fi
 
   use_temp || exit $?
-
-  cd $WORK_DIR
-
+  cd $WORK_DIR || exit $?
   # Shallow clone the directory, then remove the .git directory so it's just a bunch of files
-  git clone --depth 1 $GIT_URL .
-  rm -rf .git
-
-  if [ -f ".gitignore.layer" ]; then
-    process_gitignore_layer
-  fi
+  git clone --depth 1 $git_url .
+  echo ".git\n" >> .gitlayer.ignore
+  process_gitlayer_ignore
 
   # Copy the files to the relative path
-  cp -r . ${CURRENT_DIR}/${RELATIVE_PATH}
+  cp -r . ${current_dir}/${relative_path}
+
+  # We'll allow the traps to cleanup the temporary directory
+  cd $current_dir
+}
+
+main () {
+  # No params provided? Then you really need help...
+  if test $# -eq 0; then
+    set -- -h
+  fi
+
+  set_args="$(echo "$OPTS_SPEC" | git rev-parse --parseopt -- "$@" || echo exit $?)"
+  eval "$set_args"
+
+  arg_apply=
+  while test $# -gt 0; do
+    opt="$1"
+    shift
+    case "$opt" in
+      --apply)
+        arg_apply=1
+        ;;
+      --help|-h)
+        usage
+        ;;
+      --)
+        break
+        ;;
+      *)
+        die "fatal: unexpected option: $opt"
+    esac
+  done
+
+  if test -n "$arg_apply" && test $# -eq 0; then
+    apply_recursive
+  else
+    apply_layer "$@"
+  fi
 }
 
 main "$@"
