@@ -92,7 +92,7 @@ apply_recursive () {
   for dir in $(find . -name '.gitlayer' -exec dirname {} \;)
   do
     # cd into directory and run git-layer script with each line of .gitlayer as arguments
-    (cd "$dir" && xargs git-layer < .gitlayer)
+    (cd "$dir" && xargs -n 2 git-layer < .gitlayer)
   done
 }
 
