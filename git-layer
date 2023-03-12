@@ -47,7 +47,7 @@ use_temp () {
   if ! test -d $WORK_DIR ; then
     die "Could not create temp dir"
   fi
-  
+
   # This captures the workdir in the closure so that even if the WORK_DIR is changed
   # the cleanup function will still be able to delete the correct directory
   trap "cleanup $WORK_DIR" EXIT
@@ -91,8 +91,25 @@ process_gitlayer_ignore () {
 apply_recursive () {
   for dir in $(find . -name '.gitlayer' -exec dirname {} \;)
   do
-    # cd into directory and run git-layer script with each line of .gitlayer as arguments
-    (cd "$dir" && xargs -n 2 git-layer < .gitlayer)
+    current_dir=$( pwd )
+    cd $dir
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Remove comments from the line (if any)
+        line=$(echo "$line" | sed 's/#.*//')
+
+        # Trim leading and trailing whitespace
+        line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+
+        # Skip empty lines
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        git-layer $line
+    done < ".gitlayer"
+
+    cd $current_dir
   done
 }
 
@@ -112,7 +129,9 @@ apply_layer () {
   fi
 
   if [ ! -d "${current_dir}/${relative_path}" ]; then
-    die "Relative path (${current_dir}/${relative_path} does not exist"
+    mkdir -p "${current_dir}/${relative_path}"
+    test $? -eq 0 \
+      || die "Destination for "${git_url} ${relative_path}" in .gitlayer (${current_dir}/${relative_path}) does not exist and could not be created."
   fi
 
   use_temp || exit $?
