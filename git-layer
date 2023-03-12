@@ -106,7 +106,8 @@ apply_recursive () {
             continue
         fi
 
-        git-layer $line
+        # Script might not be in the path, best to run it like this
+        /bin/sh $0 $line
     done < ".gitlayer"
 
     cd $current_dir
