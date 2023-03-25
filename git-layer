@@ -39,6 +39,12 @@ log_error () {
     >&2 echo "[git-layer] ERROR: $@"
 }
 
+debug () {
+  if test -n "$DEBUG" ; then \
+      echo "[git-layer] DEBUG: $@"
+  fi
+}
+
 use_temp () {
   # Temp directory pattern inspired by https://stackoverflow.com/questions/4632028/how-to-create-a-temporary-directory
   export WORK_DIR=$( mktemp -d )
@@ -60,32 +66,25 @@ cleanup () {
   (rm -rf "$workdir") || {
     log_error "Could not remove temp dir $workdir -- manual cleanup required"
   }
-  log_info "Deleted temp working directory $workdir"
+  debug "Deleted temp working directory $workdir"
 }
 
 process_gitlayer_ignore () {
-    # This removes everything from the directory that is in the .gitlayer.ignore file
-    while IFS= read -r line || [ -n "$line" ]; do
-        # Remove comments from the line (if any)
-        line=$(echo "$line" | sed 's/#.*//')
-
-        # Trim leading and trailing whitespace
-        line=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-
-        # Skip empty lines
-        if [ -z "$line" ]; then
-            continue
-        fi
-
-        if test -d "$line"; then
-          rm -rf $line
-        else
-          # Use find to locate all files that match the pattern
-          find . -name "$line" -type f -delete
-        fi
-    done < ".gitlayer.ignore"
-
-    rm .gitlayer.ignore
+  # By concatenating the .gitlayer.ignore file with the .gitignore file, we can
+  # ensure all files are removed from the layer with a single git clean command.
+  # This gives us consistent behavior with the .gitignore file
+  if ! test -f .gitlayer.ignore ; then
+    debug "No .gitlayer.ignore file found, skipping"
+    return
+  fi
+  mv .gitlayer.ignore .gitignore
+  (git add . && git commit -m "git-layer: add .gitignore") > /dev/null
+  # Remove all files from the index, then add them back. This will ensure that
+  # any files that are in the .gitignore file are removed from the index
+  # and will not be copied to the destination directory
+  (git rm -r --cached . && git add . && git commit -m "Drop files from .gitignore") > /dev/null
+  git clean -fdxq
+  rm .gitignore
 }
 
 apply_recursive () {
@@ -139,12 +138,12 @@ apply_layer () {
   cd $WORK_DIR || exit $?
   # Shallow clone the directory, then remove the .git directory so it's just a bunch of files
   git clone --depth 1 $git_url .
-  echo ".git\n" >> .gitlayer.ignore
   process_gitlayer_ignore
+  rm -rf .git
 
   # Copy the files to the relative path
   cp -r . ${current_dir}/${relative_path}
-
+  log_info "Applied git-layer from ${git_url} to ${current_dir}/${relative_path}"
   # We'll allow the traps to cleanup the temporary directory
   cd $current_dir
 }
